@@ -36,24 +36,35 @@ class CreateOrderService {
     }
 
     const productsById = products.reduce((prev, curr) => {
-      Object.assign(prev, {
-        [curr.id]: curr.quantity,
-      });
+      Object.assign(prev, { [curr.id]: curr.quantity });
       return prev;
     }, {} as any);
 
     const productList = await this.productsRepository.findAllById(products);
 
-    const productListWithQuantity = productList.map(product => {
-      return Object.assign(product, {
-        quantity: productsById[product.id],
-        product_id: product.id,
-      });
+    if (products.length !== productList.length) {
+      throw new AppError('Product not found');
+    }
+
+    const productsWithNewQuantity = productList.map(product => {
+      if (product.quantity < productsById[product.id]) {
+        throw new AppError('Producs with insufficient quantity');
+      }
+
+      const quantity = product.quantity - productsById[product.id];
+
+      return Object.assign(product, { quantity });
     });
+
+    await this.productsRepository.updateQuantity(productsWithNewQuantity);
+
+    const productsOrder = productList.map(p =>
+      Object.assign(p, { quantity: productsById[p.id], product_id: p.id }),
+    );
 
     const order = await this.ordersRepository.create({
       customer,
-      products: productListWithQuantity,
+      products: productsOrder,
     });
 
     return order;
